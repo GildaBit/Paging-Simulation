@@ -1,6 +1,6 @@
 # Name: Gilad Bitton
 # RedID: 130621085
-# Makefile for Scheduling Assignment 2
+# Makefile for Paging Assignment 3
 CC = g++
 CFLAGS = -std=c++17
 OBJS = main.o sharedData.o scheduler.o process.o log.o
