@@ -31,7 +31,8 @@ struct PageTable {
     // gets the offset from a virtual address
     unsigned getOffset(uint32_t vaddr) const {return vaddr & offsetMask; }
 
-    // Map* searchMappedPfn(uint32_t vaddr);
-    // void  insertMapForVpn2Pfn(uint32_t vaddr, int pfn);
+    // Map* searchMappedPfn(PageTable* pt, unsigned int virtualAddress);
+    // void  insertMapForVpn2Pfn(PageTable *pagetable, unsigned int virtualAddress, int frame);
+    // unsigned int extractVPNFromVirtualAddress(unsigned int virtualAddress, unsigned int mask, unsigned int shift);
 };
 
