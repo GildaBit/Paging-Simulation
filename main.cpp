@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <sstream>
 
+#include "log_helpers.h"
+#include "pageTable.h"
 
 using namespace std;
 
@@ -97,6 +99,14 @@ int main(int argc, char** argv) {
     cout << endl;
     cout << "n=" << numAccesses << ", f=" << availFrames 
          << ", b=" << bitUpdateInterval << ", l=" << logMode << endl;
+
+    PageTable pt;
+    pt.initFromLevelBits(levelBits);
+
+    if(logMode == "bitmasks") {
+        log_bitmasks(pt.numLevels, pt.bitmasks.data());
+        return 0;
+    }
 
     return 0;
 }
