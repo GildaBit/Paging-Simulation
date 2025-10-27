@@ -4,8 +4,8 @@
 using namespace std;
 
 struct Level {
-    bool isLeaf = false; // Is this level a leaf level
     unsigned entryCount = 0; // Number of entries possible at this level
+    bool isLeaf = false; // Is this level a leaf level
     Level **children; // Child levels
     Map *mappings; // Mappings at this level (only for leaf levels)
     unsigned depth; // Depth of this level in the page table
@@ -31,7 +31,7 @@ struct Level {
 
     // Accessors
     inline Level* getChild(unsigned index) const { return children ? children[index] : nullptr; }
-    inline Map& getMapping(unsigned index) {return mappings[index]; } // modifiable reference is returned
+    inline Map* getMapping(unsigned index) {return mappings ? &mappings[index] : nullptr; } // modifiable reference is returned
     inline const Map& getMap(unsigned index) const {return mappings[index];} // constant reference is returned
 
 };

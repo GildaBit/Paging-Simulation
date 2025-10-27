@@ -6,13 +6,106 @@
 #include <vector>
 #include <pthread.h>
 #include <fstream>
+#include <cassert>
 #include <unistd.h>
 #include <sstream>
 
 #include "log_helpers.h"
 #include "pageTable.h"
+#include "vaddr_tracereader.h"
 
 using namespace std;
+
+// Logs the bitmasks for all page table levels
+static int run_bitmasks(PageTable& pt) {
+    log_bitmasks(pt.numLevels, pt.bitmasks.data());
+    return 0;
+}
+
+// Logs the virtual to physical address translations
+static int run_va2pa(const string& traceFile, PageTable& pt, int numAccesses, int numFrames) {
+    FILE* tf = fopen(traceFile.c_str(), "rb");
+    if (!tf) {
+        std::cerr << "Unable to open " << traceFile << '\n';
+        return 1;
+    }
+
+    p2AddrTr mTrace;
+    int count = 0;
+    int nextFreePFN = 0;
+
+    // if numAccesses is <= 0, process all accesses, otherwise process only first numAccesses 
+    while ((numAccesses <= 0 || count < numAccesses) && NextAddress(tf, &mTrace)) {
+        unsigned int vaddr = mTrace.addr; // extract virtual address
+        Map* mapping = pt.searchMappedPfn(vaddr);
+
+        // if the mapping does not exist, it's a miss
+        if (!mapping) {
+            // a miss, need to insert new mapping
+            if (nextFreePFN >= numFrames) {
+                cerr << "Out of physical frames\n";
+                fclose(tf);
+                return 1;
+            }
+            pt.insertMapForVpn2Pfn(vaddr, nextFreePFN++);
+            mapping = pt.searchMappedPfn(vaddr);
+        }
+
+        // at this point there would be a valid mapping for the virtual address to a physical frame
+        uint32_t paddr = (uint32_t(mapping->pfn) << pt.offsetBits) | pt.getOffset(vaddr); // constructs physical address by left shifting by offset bits and then adding offset bits
+        log_va2pa(vaddr, paddr);
+        count++;
+    }
+    fclose(tf);
+    return 0;
+    
+}
+
+static int run_vpns_pfn(const string& traceFile, PageTable& pt, int numAccesses, int numFrames) {
+    FILE* tf = fopen(traceFile.c_str(), "rb");
+    if (!tf) {
+        std::cerr << "Unable to open " << traceFile << '\n';
+        return 1;
+    }
+
+    p2AddrTr mTrace;
+    int count = 0;
+    int nextFreePFN = 0;
+
+    // if numAccesses is <= 0, process all accesses, otherwise process only first numAccesses 
+    while ((numAccesses <= 0 || count < numAccesses) && NextAddress(tf, &mTrace)) {
+        unsigned int vaddr = mTrace.addr; // extract virtual address
+
+        // extract VPN pieces for all levels of VPN address
+        vector<unsigned> vpnPieces(pt.numLevels);
+        for (int i = 0; i < pt.numLevels; i++) {
+            vpnPieces[i] = pt.getVPNPiece(vaddr, i);
+        }
+
+        // lookup PFN mapping
+        Map* mapping = pt.searchMappedPfn(vaddr);
+
+        // if the mapping does not exist, it's a miss
+        if (!mapping) {
+            // a miss, need to insert new mapping
+            if (nextFreePFN >= numFrames) {
+                cerr << "Out of physical frames\n";
+                fclose(tf);
+                return 1;
+            }
+            pt.insertMapForVpn2Pfn(vaddr, nextFreePFN++);
+            mapping = pt.searchMappedPfn(vaddr);
+        }
+
+        int pfn = mapping && mapping->valid ? mapping->pfn : -1;
+
+        log_vpns_pfn(pt.numLevels, vpnPieces.data(), pfn);
+        count++;
+    }
+    fclose(tf);
+    return 0;
+
+}
 
 int main(int argc, char** argv) {
     int opt = 0;
@@ -104,8 +197,11 @@ int main(int argc, char** argv) {
     pt.initFromLevelBits(levelBits);
 
     if(logMode == "bitmasks") {
-        log_bitmasks(pt.numLevels, pt.bitmasks.data());
-        return 0;
+        return run_bitmasks(pt);
+    } else if(logMode == "va2pa") {
+        return run_va2pa(traceFile, pt, numAccesses, availFrames);
+    } else if(logMode == "vpns_pfn") {
+        return run_vpns_pfn(traceFile, pt, numAccesses, availFrames);
     }
 
     return 0;

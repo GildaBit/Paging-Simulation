@@ -1,5 +1,13 @@
 #include "pageTable.h"
 
+// Destructor
+PageTable::~PageTable() {
+    if (rootLevel) {
+        delete rootLevel;
+        rootLevel = nullptr;
+    }
+}
+
 void PageTable::initFromLevelBits(const vector<int>& levelBits) {
     numLevels = levelBits.size();
 
@@ -32,4 +40,61 @@ void PageTable::initFromLevelBits(const vector<int>& levelBits) {
     }
 
     // root level allocated here
+    rootLevel = new Level(entryCount[0], numLevels == 1);
+}
+
+// searches and returns the Map for the given virtual address
+Map* PageTable::searchMappedPfn(unsigned int virtualAddress) {
+    // preliminary checks
+    if (!rootLevel || numLevels <= 0) { return nullptr;}
+
+    // traverse the page table levels to get to desired leaf level
+    Level* currentLevel = rootLevel;
+    while (!currentLevel->isLeaf) {
+        currentLevel = currentLevel->getChild(getVPNPiece(virtualAddress, currentLevel->depth));
+        if (!currentLevel) {
+            return nullptr;
+        }
+    }
+
+    // at lead level, get the mapping, check validity, and return
+    unsigned vpnPiece = getVPNPiece(virtualAddress, currentLevel->depth);
+    if (!currentLevel->mappings) {
+        return nullptr;
+    }
+    Map& mapping = *currentLevel->getMapping(vpnPiece);
+    if (mapping.valid) {
+        return &mapping;
+    } else {
+        return nullptr;
+    }
+}
+
+// inserts a mapping from the given virtual address to the given frame number
+void  PageTable::insertMapForVpn2Pfn(unsigned int virtualAddress, int frame) {
+        // preliminary checks
+    if (!rootLevel || numLevels <= 0) { return;}
+
+    // traverse the page table levels to get to desired leaf level
+    Level* currentLevel = rootLevel;
+    while (!currentLevel->isLeaf) {
+        unsigned vpnPiece = getVPNPiece(virtualAddress, currentLevel->depth);
+        unsigned childEntryCount = entryCount[currentLevel->depth + 1];
+        bool childIsLeaf = (currentLevel->depth + 1 == (unsigned)(numLevels - 1));
+        currentLevel = currentLevel->ensureChild(vpnPiece, childEntryCount, childIsLeaf);
+    }
+
+    // at leaf level, set the mapping and mark valid
+    unsigned vpnPiece = getVPNPiece(virtualAddress, currentLevel->depth);
+    if (!currentLevel->mappings) {
+        currentLevel->allocateMappings();
+    }
+    Map* mapping = currentLevel->getMapping(vpnPiece);
+    mapping->pfn = frame;
+    mapping->valid = true;
+}
+
+// extracts the VPN piece from the given virtual address using the given mask and shift
+unsigned int extractVPNFromVirtualAddress(unsigned int virtualAddress, unsigned int mask, unsigned int shift) {
+    return (virtualAddress & mask) >> shift;
 }

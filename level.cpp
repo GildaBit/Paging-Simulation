@@ -3,7 +3,7 @@
 
 // Destructor
 Level::~Level() {
-    if (isLeaf) {
+    if (mappings) {
         // delete mappings array
         delete[] mappings;
         mappings = nullptr;

@@ -14,6 +14,9 @@ struct PageTable {
     unsigned offsetMask = 0; //Bitmask for offset
     Level* rootLevel = nullptr; // Pointer to the root level of the page table
 
+    // Destructor
+    ~PageTable();
+
     // Function to build masks/shifts/entries from levelBits
     void initFromLevelBits(const vector<int>& levelBits);
 
@@ -31,8 +34,9 @@ struct PageTable {
     // gets the offset from a virtual address
     unsigned getOffset(uint32_t vaddr) const {return vaddr & offsetMask; }
 
-    // Map* searchMappedPfn(PageTable* pt, unsigned int virtualAddress);
-    // void  insertMapForVpn2Pfn(PageTable *pagetable, unsigned int virtualAddress, int frame);
-    // unsigned int extractVPNFromVirtualAddress(unsigned int virtualAddress, unsigned int mask, unsigned int shift);
+    // Paging operations
+    Map* searchMappedPfn(unsigned int virtualAddress);
+    void  insertMapForVpn2Pfn(unsigned int virtualAddress, int frame);
+    unsigned int extractVPNFromVirtualAddress(unsigned int virtualAddress, unsigned int mask, unsigned int shift);
 };
 
