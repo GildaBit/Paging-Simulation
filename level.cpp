@@ -1,3 +1,9 @@
+/**
+ * Author: Gilad Bitton
+ * RedID: 130621085
+ *
+ * **/
+
 #include "level.h"
 #include <cstdlib>
 

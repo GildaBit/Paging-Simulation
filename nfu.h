@@ -1,3 +1,9 @@
+/**
+ * Author: Gilad Bitton
+ * RedID: 130621085
+ *
+ * **/
+
 #pragma once
 #include <cstdint>
 #include <vector>
@@ -17,8 +23,8 @@ struct NFUState {
     vector<LoadedPage> pages; // all currently  loaded pages
     unordered_map<uint32_t, size_t> vpnToIndex; // maps VPN to index in pages vector for quick lookup
     unordered_set<uint32_t> accessed; // all VPNs accessed in this interval will have their bitstring's MSB set to 1
-    uint32_t currentTime = 0; // current time for tie-breaking
-    uint32_t timeSinceTick = 0; // time since last bitstring update
+    uint32_t currentTime; // current time for tie-breaking
+    uint32_t timeSinceTick; // time since last bitstring update
     int maxFrames = 0; // maximum number of physical frames allocated before beginning page replacement
     int interval = 0; // interval for updating bitstrings
 };
