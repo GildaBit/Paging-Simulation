@@ -61,6 +61,7 @@ static int run_va2pa(const string& traceFile, PageTable& pt, int numAccesses, in
     
 }
 
+// Logs the VPN pieces and PFN for each memory access
 static int run_vpns_pfn(const string& traceFile, PageTable& pt, int numAccesses, int numFrames) {
     FILE* tf = fopen(traceFile.c_str(), "rb");
     if (!tf) {
@@ -106,6 +107,52 @@ static int run_vpns_pfn(const string& traceFile, PageTable& pt, int numAccesses,
     return 0;
 
 }
+
+// Logs the offset for each memory access
+static int run_offset(const string& traceFile, PageTable& pt, int numAccesses) {
+    FILE* tf = fopen(traceFile.c_str(), "rb");
+    if (!tf) {
+        std::cerr << "Unable to open " << traceFile << '\n';
+        return 1;
+    }
+
+    p2AddrTr mTrace;
+    int count = 0;
+
+    // if numAccesses is <= 0, process all accesses, otherwise process only first numAccesses 
+    while ((numAccesses <= 0 || count < numAccesses) && NextAddress(tf, &mTrace)) {
+        unsigned int vaddr = mTrace.addr; // extract virtual address
+        unsigned offset = pt.getOffset(vaddr);
+        print_num_inHex(offset);
+        count++;
+    }
+    fclose(tf);
+    return 0;
+}
+
+// static int run_summary(const string& traceFile, PageTable& pt, int numAccesses) {
+//     FILE* tf = fopen(traceFile.c_str(), "rb");
+//     if (!tf) {
+//         std::cerr << "Unable to open " << traceFile << '\n';
+//         return 1;
+//     }
+
+//     p2AddrTr mTrace;
+//     int count = 0;
+//     int nextFreePFN = 0;
+//     int pageSize =  pt.pageSizeBytes();
+//     int addressesProcessed = 0;
+//     int hits = 0;
+//     int misses = 0;
+
+
+//     // if numAccesses is <= 0, process all accesses, otherwise process only first numAccesses 
+//     while ((numAccesses <= 0 || count < numAccesses) && NextAddress(tf, &mTrace)) {
+
+//     }
+//     fclose(tf);
+//     return 0;
+// }
 
 int main(int argc, char** argv) {
     int opt = 0;
@@ -185,23 +232,18 @@ int main(int argc, char** argv) {
         exit(0);
     }
 
-    // testing
-    cout << "Trace file: " << traceFile << endl;
-    cout << "Levels: ";
-    for (int b : levelBits) cout << b << " ";
-    cout << endl;
-    cout << "n=" << numAccesses << ", f=" << availFrames 
-         << ", b=" << bitUpdateInterval << ", l=" << logMode << endl;
-
     PageTable pt;
     pt.initFromLevelBits(levelBits);
 
+    // logging based on logMode
     if(logMode == "bitmasks") {
         return run_bitmasks(pt);
     } else if(logMode == "va2pa") {
         return run_va2pa(traceFile, pt, numAccesses, availFrames);
     } else if(logMode == "vpns_pfn") {
         return run_vpns_pfn(traceFile, pt, numAccesses, availFrames);
+    } else if(logMode == "offset") {
+        return run_offset(traceFile, pt, numAccesses);
     }
 
     return 0;
