@@ -8,6 +8,36 @@ PageTable::~PageTable() {
     }
 }
 
+static uint64_t countLevelEntries(const Level* node) {
+    if (!node) return 0;
+
+    uint64_t total = 0;
+
+    if (node->isLeaf) {
+        // Count ALL mapping slots at the leaf (if the array was allocated)
+        if (node->mappings) {
+            total += node->entryCount;
+        }
+        return total;
+    }
+
+    // Internal level: count ALL child slots (if the array was allocated)
+    if (node->children) {
+        total += node->entryCount;
+        for (unsigned i = 0; i < node->entryCount; ++i) {
+            if (node->children[i]) {
+                total += countLevelEntries(node->children[i]);
+            }
+        }
+    }
+    return total;
+}
+
+uint64_t PageTable::countEntries(const PageTable* pt) {
+    if (!pt) return 0;
+    return countLevelEntries(pt->rootLevel);
+}
+
 void PageTable::initFromLevelBits(const vector<int>& levelBits) {
     numLevels = levelBits.size();
 

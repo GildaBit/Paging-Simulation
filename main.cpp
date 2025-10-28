@@ -13,6 +13,7 @@
 #include "log_helpers.h"
 #include "pageTable.h"
 #include "vaddr_tracereader.h"
+#include "nfu.h"
 
 using namespace std;
 
@@ -37,18 +38,40 @@ static int run_va2pa(const string& traceFile, PageTable& pt, int numAccesses, in
     // if numAccesses is <= 0, process all accesses, otherwise process only first numAccesses 
     while ((numAccesses <= 0 || count < numAccesses) && NextAddress(tf, &mTrace)) {
         unsigned int vaddr = mTrace.addr; // extract virtual address
+
+        beforeAccessNFU();
+        uint32_t vpn = vaddr >> pt.offsetBits;
+
         Map* mapping = pt.searchMappedPfn(vaddr);
 
-        // if the mapping does not exist, it's a miss
-        if (!mapping) {
-            // a miss, need to insert new mapping
-            if (nextFreePFN >= numFrames) {
-                cerr << "Out of physical frames\n";
-                fclose(tf);
-                return 1;
+        // on hit
+        if (mapping && mapping->valid) {
+            onHitNFU(vpn);
+        } else {
+            // on miss
+            if (!isFullNFU()) {
+                // free frame available
+                pt.insertMapForVpn2Pfn(vaddr, nextFreePFN);
+                onMissNFU(vpn, nextFreePFN);
+                mapping = pt.searchMappedPfn(vaddr);
+                nextFreePFN++;
+            } else {
+                // need to evict a page
+                int victimIndex = selectVictimNFU();
+                int victimPFN = nfuState.pages[victimIndex].pfn;
+
+                // save old vpn and bitstring for removal
+                auto oldInfo = reuseSlotNFU(victimIndex, vpn);
+                uint32_t oldVaddr = oldInfo.first << pt.offsetBits;
+
+                // remove old mapping
+                Map* oldMapping = pt.searchMappedPfn(oldVaddr);
+                if (oldMapping) oldMapping->valid = false;
+
+                // insert new mapping
+                pt.insertMapForVpn2Pfn(vaddr, victimPFN);
+                mapping = pt.searchMappedPfn(vaddr);
             }
-            pt.insertMapForVpn2Pfn(vaddr, nextFreePFN++);
-            mapping = pt.searchMappedPfn(vaddr);
         }
 
         // at this point there would be a valid mapping for the virtual address to a physical frame
@@ -83,19 +106,39 @@ static int run_vpns_pfn(const string& traceFile, PageTable& pt, int numAccesses,
             vpnPieces[i] = pt.getVPNPiece(vaddr, i);
         }
 
-        // lookup PFN mapping
+        beforeAccessNFU();
+        uint32_t vpn = vaddr >> pt.offsetBits;
+
         Map* mapping = pt.searchMappedPfn(vaddr);
 
-        // if the mapping does not exist, it's a miss
-        if (!mapping) {
-            // a miss, need to insert new mapping
-            if (nextFreePFN >= numFrames) {
-                cerr << "Out of physical frames\n";
-                fclose(tf);
-                return 1;
+        // on hit
+        if (mapping && mapping->valid) {
+            onHitNFU(vpn);
+        } else {
+            // on miss
+            if (!isFullNFU()) {
+                // free frame available
+                pt.insertMapForVpn2Pfn(vaddr, nextFreePFN);
+                onMissNFU(vpn, nextFreePFN);
+                mapping = pt.searchMappedPfn(vaddr);
+                nextFreePFN++;
+            } else {
+                // need to evict a page
+                int victimIndex = selectVictimNFU();
+                int victimPFN = nfuState.pages[victimIndex].pfn;
+
+                // save old vpn and bitstring for removal
+                auto oldInfo = reuseSlotNFU(victimIndex, vpn);
+                uint32_t oldVaddr = oldInfo.first << pt.offsetBits;
+
+                // remove old mapping
+                Map* oldMapping = pt.searchMappedPfn(oldVaddr);
+                if (oldMapping) oldMapping->valid = false;
+
+                // insert new mapping
+                pt.insertMapForVpn2Pfn(vaddr, victimPFN);
+                mapping = pt.searchMappedPfn(vaddr);
             }
-            pt.insertMapForVpn2Pfn(vaddr, nextFreePFN++);
-            mapping = pt.searchMappedPfn(vaddr);
         }
 
         int pfn = mapping && mapping->valid ? mapping->pfn : -1;
@@ -130,29 +173,135 @@ static int run_offset(const string& traceFile, PageTable& pt, int numAccesses) {
     return 0;
 }
 
-// static int run_summary(const string& traceFile, PageTable& pt, int numAccesses) {
-//     FILE* tf = fopen(traceFile.c_str(), "rb");
-//     if (!tf) {
-//         std::cerr << "Unable to open " << traceFile << '\n';
-//         return 1;
-//     }
+static int run_summary(const string& traceFile, PageTable& pt, int numAccesses) {
+    FILE* tf = fopen(traceFile.c_str(), "rb");
+    if (!tf) {
+        std::cerr << "Unable to open " << traceFile << '\n';
+        return 1;
+    }
 
-//     p2AddrTr mTrace;
-//     int count = 0;
-//     int nextFreePFN = 0;
-//     int pageSize =  pt.pageSizeBytes();
-//     int addressesProcessed = 0;
-//     int hits = 0;
-//     int misses = 0;
+    p2AddrTr mTrace;
+    int count = 0;
+    int nextFreePFN = 0;
+    unsigned pageSize = pt.pageSizeBytes();
+    unsigned addressesProcessed = 0;
+    unsigned hits = 0;
+    unsigned pageReplacements = 0;
+    unsigned framesAllocated = 0;
+    unsigned numEntries = 0;
 
+    // if numAccesses is <= 0, process all accesses, otherwise process only first numAccesses 
+    while ((numAccesses <= 0 || count < numAccesses) && NextAddress(tf, &mTrace)) {
+        unsigned int vaddr = mTrace.addr; // extract virtual address
 
-//     // if numAccesses is <= 0, process all accesses, otherwise process only first numAccesses 
-//     while ((numAccesses <= 0 || count < numAccesses) && NextAddress(tf, &mTrace)) {
+        beforeAccessNFU();
+        uint32_t vpn = vaddr >> pt.offsetBits;
 
-//     }
-//     fclose(tf);
-//     return 0;
-// }
+        Map* mapping = pt.searchMappedPfn(vaddr);
+
+        // on hit
+        if (mapping && mapping->valid) {
+            hits++;
+            onHitNFU(vpn);
+        } else {
+            // on miss
+            if (!isFullNFU()) {
+                framesAllocated++;
+                // free frame available
+                pt.insertMapForVpn2Pfn(vaddr, nextFreePFN);
+                onMissNFU(vpn, nextFreePFN);
+                mapping = pt.searchMappedPfn(vaddr);
+                nextFreePFN++;
+            } else {
+                pageReplacements++;
+                // need to evict a page
+                int victimIndex = selectVictimNFU();
+                int victimPFN = nfuState.pages[victimIndex].pfn;
+
+                // save old vpn and bitstring for removal
+                auto oldInfo = reuseSlotNFU(victimIndex, vpn);
+                uint32_t oldVaddr = oldInfo.first << pt.offsetBits;
+
+                // remove old mapping
+                Map* oldMapping = pt.searchMappedPfn(oldVaddr);
+                if (oldMapping) oldMapping->valid = false;
+
+                // insert new mapping
+                pt.insertMapForVpn2Pfn(vaddr, victimPFN);
+                mapping = pt.searchMappedPfn(vaddr);
+            }
+        }
+        count++;
+    }
+    addressesProcessed = count;
+    numEntries = pt.countEntries(&pt);
+    log_summary(pageSize, pageReplacements, hits, addressesProcessed, framesAllocated, numEntries);
+    fclose(tf);
+    return 0;
+}
+
+static int run_vpn2pfn_pr(const string& traceFile, PageTable& pt, int numAccesses) {
+    FILE* tf = fopen(traceFile.c_str(), "rb");
+    if (!tf) {
+        std::cerr << "Unable to open " << traceFile << '\n';
+        return 1;
+    }
+
+    p2AddrTr mTrace;
+    int count = 0;
+    int nextFreePFN = 0;
+
+    // if numAccesses is <= 0, process all accesses, otherwise process only first numAccesses 
+    while ((numAccesses <= 0 || count < numAccesses) && NextAddress(tf, &mTrace)) {
+        unsigned int vaddr = mTrace.addr; // extract virtual address
+        bool pthit = false;
+        int vpnReplaced = -1;
+        int victimBitstring = 0;
+
+        beforeAccessNFU();
+        uint32_t vpn = vaddr >> pt.offsetBits;
+
+        Map* mapping = pt.searchMappedPfn(vaddr);
+
+        // on hit
+        if (mapping && mapping->valid) {
+            pthit = true;
+            onHitNFU(vpn);
+        } else {
+            // on miss
+            if (!isFullNFU()) {
+                // free frame available
+                pt.insertMapForVpn2Pfn(vaddr, nextFreePFN);
+                onMissNFU(vpn, nextFreePFN);
+                mapping = pt.searchMappedPfn(vaddr);
+                nextFreePFN++;
+            } else {
+                // need to evict a page
+                int victimIndex = selectVictimNFU();
+                int victimPFN = nfuState.pages[victimIndex].pfn;
+                vpnReplaced = nfuState.pages[victimIndex].vpn;
+                victimBitstring = nfuState.pages[victimIndex].bitstring;  
+
+                // save old vpn and bitstring for removal
+                auto oldInfo = reuseSlotNFU(victimIndex, vpn);
+                uint32_t oldVaddr = oldInfo.first << pt.offsetBits;
+
+                // remove old mapping
+                Map* oldMapping = pt.searchMappedPfn(oldVaddr);
+                if (oldMapping) oldMapping->valid = false;
+
+                // insert new mapping
+                pt.insertMapForVpn2Pfn(vaddr, victimPFN);
+                mapping = pt.searchMappedPfn(vaddr);
+            }
+        }
+        int pfn = mapping && mapping->valid ? mapping-> pfn : -1;
+        log_mapping(vpn, pfn, vpnReplaced, victimBitstring, pthit);
+        count++;
+    }
+    fclose(tf);
+    return 0;
+}
 
 int main(int argc, char** argv) {
     int opt = 0;
@@ -235,6 +384,8 @@ int main(int argc, char** argv) {
     PageTable pt;
     pt.initFromLevelBits(levelBits);
 
+    initNFUState(availFrames, bitUpdateInterval);
+
     // logging based on logMode
     if(logMode == "bitmasks") {
         return run_bitmasks(pt);
@@ -244,6 +395,10 @@ int main(int argc, char** argv) {
         return run_vpns_pfn(traceFile, pt, numAccesses, availFrames);
     } else if(logMode == "offset") {
         return run_offset(traceFile, pt, numAccesses);
+    } else if(logMode == "summary") {
+        return run_summary(traceFile, pt, numAccesses);
+    } else if(logMode == "vpn2pfn_pr") {
+        return run_vpn2pfn_pr(traceFile, pt, numAccesses);
     }
 
     return 0;

@@ -34,7 +34,7 @@ void onHitNFU(uint32_t vpn);
 // adds new page and initializes its bitstring when a page is not loaded
 void onMissNFU(uint32_t vpn, int pfn);
 // returns true if all frames are currently used
-bool isFUllNFU();
+bool isFullNFU();
 // selects victim page to evict based on bitstring, and in case of tie, last access time
 int selectVictimNFU();
 // reuses the victim page's frame for new VPN, returns old vpn and bitstring for logging

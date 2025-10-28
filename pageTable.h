@@ -34,6 +34,9 @@ struct PageTable {
     // gets the offset from a virtual address
     unsigned getOffset(uint32_t vaddr) const {return vaddr & offsetMask; }
 
+    // Returns the total number of page table entries currently present:
+    uint64_t countEntries(const PageTable* pt);
+
     // Paging operations
     Map* searchMappedPfn(unsigned int virtualAddress);
     void  insertMapForVpn2Pfn(unsigned int virtualAddress, int frame);
