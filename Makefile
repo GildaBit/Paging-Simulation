@@ -1,31 +1,46 @@
 # Name: Gilad Bitton
 # RedID: 130621085
-# Makefile for Paging Assignment 3
-CC = g++
-CFLAGS = -std=c++17
-OBJS = main.o pageTable.o log_helpers.o level.o vaddr_tracereader.o nfu.o
+# Makefile for Paging Assignment 3 (folders-aware)
+
+# Compiler / flags
+CXX       = g++
+CXXFLAGS  = -std=c++17 -Wall -Wextra -MMD -MP
+
+# Directories
+SRC_DIR   = code_files/cpp_files
+OBJ_DIR   = object_files
+INC_DIRS  = code_files/header_files code_files
+
+# Apply include dirs
+CXXFLAGS += $(addprefix -I,$(INC_DIRS))
+
+# Sources / Objects / Deps / Target
+SRCS := $(wildcard $(SRC_DIR)/*.cpp)
+OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
+DEPS := $(OBJS:.o=.d)
+
 TARGET = pagingwithpr
 
+.PHONY: all clean run
+
+all: $(TARGET)
+
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
-main.o: main.cpp pageTable.h log_helpers.h vaddr_tracereader.h nfu.h
-	$(CC) $(CFLAGS) -c main.cpp
+# Ensure object dir exists, then compile each .cpp -> .o
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)
 
-pageTable.o: pageTable.cpp pageTable.h level.h
-	$(CXX) $(CXXFLAGS) -c pageTable.cpp
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-log_helpers.o: log_helpers.cpp log_helpers.h
-	$(CXX) $(CXXFLAGS) -c log_helpers.cpp
+# Include auto-generated dependency files
+-include $(DEPS)
 
-level.o: level.cpp level.h map.h
-	$(CXX) $(CXXFLAGS) -c level.cpp
-
-vaddr_tracereader.o: vaddr_tracereader.cpp vaddr_tracereader.h 
-		$(CXX) $(CXXFLAGS) -c vaddr_tracereader.cpp
-
-nfu.o: nfu.cpp nfu.h 
-	$(CXX) $(CXXFLAGS) -c nfu.cpp
+# Convenience run target (adjust args to your needs)
+run: $(TARGET)
+	./$(TARGET) -n 50 -f 20 -b 10 -l vpn2pfn_pr input_files/trace.tr 6 6 8
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJ_DIR)/*.o $(OBJ_DIR)/*.d $(TARGET)
