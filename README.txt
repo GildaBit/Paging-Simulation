@@ -1,3 +1,5 @@
+Author: Gilad Bitton
+
 Multilevel Paging Simulator (C++)
 
 A C++ simulator for virtual memory translation using multi-level page tables and a Not Frequently Used (NFU) page replacement policy.
